@@ -1,12 +1,5 @@
-# Core requirements for Image Captioning (lightweight)
-streamlit>=1.39.0
-torch>=2.5.0
-torchvision>=0.20.0
-pillow>=10.0.0
-numpy>=1.26.0
-
-# Optional: For Text-to-Image generation (heavy - uncomment if needed)
-# transformers>=4.46.0
-# diffusers>=0.31.0
-# accelerate>=1.2.0
-# safetensors>=0.4.0
+streamlit
+Pillow
+torch
+transformers
+diffusers
