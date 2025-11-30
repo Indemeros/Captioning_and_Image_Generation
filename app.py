@@ -4,10 +4,17 @@ import torch.nn as nn
 from torchvision import transforms, models
 from PIL import Image
 import numpy as np
-from diffusers import StableDiffusionPipeline
 import pickle
 import os
 from io import BytesIO
+
+# Try to import diffusers, but make it optional
+try:
+    from diffusers import StableDiffusionPipeline
+    DIFFUSERS_AVAILABLE = True
+except ImportError:
+    DIFFUSERS_AVAILABLE = False
+    st.warning("⚠️ Diffusers library not available. Text-to-Image generation will be disabled.")
 
 # Set page config
 st.set_page_config(
@@ -247,17 +254,23 @@ def load_captioning_model():
 @st.cache_resource
 def load_text_to_image_model():
     """Load the pretrained text-to-image generation model"""
+    if not DIFFUSERS_AVAILABLE:
+        st.error("❌ Diffusers library is not installed. Text-to-Image generation is unavailable.")
+        st.info("💡 To enable this feature, install diffusers: `pip install diffusers`")
+        return None, None
+    
     try:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Load Stable Diffusion (use a smaller version for efficiency)
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            safety_checker=None,
-            requires_safety_checker=False
-        )
-        pipe = pipe.to(device)
+        with st.spinner("Loading Stable Diffusion model (this may take a few minutes on first run)..."):
+            # Load Stable Diffusion (use a smaller version for efficiency)
+            pipe = StableDiffusionPipeline.from_pretrained(
+                "CompVis/stable-diffusion-v1-4",
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                safety_checker=None,
+                requires_safety_checker=False
+            )
+            pipe = pipe.to(device)
         
         st.success("✅ Text-to-Image model loaded successfully!")
         return pipe, device
@@ -355,69 +368,79 @@ with tab1:
 with tab2:
     st.header("Generate Image from Text")
     
-    text_prompt = st.text_area(
-        "Enter your prompt:", 
-        placeholder="Example: A beautiful sunset over mountains with a lake in the foreground",
-        height=100
-    )
-    
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        num_inference_steps = st.slider(
-            "Inference Steps", 
-            min_value=10, 
-            max_value=100, 
-            value=50,
-            help="More steps = better quality but slower"
+    if not DIFFUSERS_AVAILABLE:
+        st.warning("⚠️ Text-to-Image generation requires the diffusers library.")
+        st.info("""
+        To enable this feature:
+        1. Install diffusers: `pip install diffusers`
+        2. Restart the application
+        
+        Or you can use the Image Captioning feature which is fully functional!
+        """)
+    else:
+        text_prompt = st.text_area(
+            "Enter your prompt:", 
+            placeholder="Example: A beautiful sunset over mountains with a lake in the foreground",
+            height=100
         )
         
-        guidance_scale = st.slider(
-            "Guidance Scale", 
-            min_value=1.0, 
-            max_value=20.0, 
-            value=7.5,
-            step=0.5,
-            help="How closely to follow the prompt"
-        )
-    
-    if st.button("🎨 Generate Image", key="gen_image"):
-        if text_prompt:
-            with st.spinner("Generating image... This may take a minute..."):
-                pipe, device = load_text_to_image_model()
-                
-                if pipe is not None:
-                    try:
-                        # Generate image
-                        image = pipe(
-                            text_prompt,
-                            num_inference_steps=num_inference_steps,
-                            guidance_scale=guidance_scale
-                        ).images[0]
-                        
-                        # Display result
-                        with col2:
-                            st.markdown("### Generated Image")
-                            st.image(image, use_container_width=True)
-                            
-                            # Download button
-                            buf = BytesIO()
-                            image.save(buf, format="PNG")
-                            byte_im = buf.getvalue()
-                            
-                            st.download_button(
-                                label="⬇️ Download Image",
-                                data=byte_im,
-                                file_name="generated_image.png",
-                                mime="image/png"
-                            )
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            num_inference_steps = st.slider(
+                "Inference Steps", 
+                min_value=10, 
+                max_value=100, 
+                value=50,
+                help="More steps = better quality but slower"
+            )
+            
+            guidance_scale = st.slider(
+                "Guidance Scale", 
+                min_value=1.0, 
+                max_value=20.0, 
+                value=7.5,
+                step=0.5,
+                help="How closely to follow the prompt"
+            )
+        
+        if st.button("🎨 Generate Image", key="gen_image"):
+            if text_prompt:
+                with st.spinner("Generating image... This may take a minute..."):
+                    pipe, device = load_text_to_image_model()
                     
-                    except Exception as e:
-                        st.error(f"Error generating image: {str(e)}")
-                else:
-                    st.error("Failed to load the text-to-image model.")
-        else:
-            st.warning("Please enter a text prompt first!")
+                    if pipe is not None:
+                        try:
+                            # Generate image
+                            image = pipe(
+                                text_prompt,
+                                num_inference_steps=num_inference_steps,
+                                guidance_scale=guidance_scale
+                            ).images[0]
+                            
+                            # Display result
+                            with col2:
+                                st.markdown("### Generated Image")
+                                st.image(image, use_container_width=True)
+                                
+                                # Download button
+                                buf = BytesIO()
+                                image.save(buf, format="PNG")
+                                byte_im = buf.getvalue()
+                                
+                                st.download_button(
+                                    label="⬇️ Download Image",
+                                    data=byte_im,
+                                    file_name="generated_image.png",
+                                    mime="image/png"
+                                )
+                        
+                        except Exception as e:
+                            st.error(f"Error generating image: {str(e)}")
+                    else:
+                        st.error("Failed to load the text-to-image model.")
+            else:
+                st.warning("Please enter a text prompt first!")
 
 # Footer
 st.markdown("---")
